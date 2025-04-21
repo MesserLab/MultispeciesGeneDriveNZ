@@ -1,0 +1,711 @@
+// Author: Samuel E. Champer
+
+species all initialize() {
+    initializeSLiMModelType("nonWF");
+
+    // General params.
+    defineCfgParam("SCALE_FACTOR", 1.1);
+    defineCfgParam("MUSTELID_RELATIVE_CAPACITY", 0.017);
+    // Area options: "lake/", "homlake/", "city/", "homcity/", "big/"
+    defineCfgParam("MODELED_AREA_FOLDER", "big/");
+    defineCfgParam("DRIVE_RELEASE_CSV", "drive.csv");
+    defineCfgParam("MUSTELID_DATA_FILE", "mustelid.csv");
+    defineCfgParam("VISUAL_OUTPUT", T);
+
+    // Drive Parameters:
+    defineCfgParam("DRIVE_EFFICIENCY", 1.0);
+
+    /////////////////////////// Rats ///////////////////////////
+    defineCfgParam("RAT_DISPERSAL_LIKELIHOOD", 0.5);
+    defineCfgParam("RAT_FORAGING_AREA", 1);  // Areas in this model are 1 = 1 hectare.
+    defineCfgParam("RAT_LITTER_SIZE", 6);
+    defineCfgParam("RAT_SURVIVAL_RATE", 0.8);
+    defineCfgParam("RAT_MAX_AGE", 24);
+    defineCfgParam("RAT_REPRODUCE_CHANCE", c(0.694, 0.606, 0.519, 0.260, 0.121, 0.052, 0.035, 0.069, 0.173, 0.346, 0.519, 0.606));  // Per month. Starting January.
+    defineCfgParam("RAT_ADULT_AGE", 3);  // In months.
+    defineCfgParam("RAT_PREDATE_ON_NEWBORN_MOUSE_RATE", 0.075);
+    defineCfgParam("RAT_NEWBORN_MOUSE_RESOURCE_VALUE", 0.075);
+    defineCfgParam("RAT_RELATIVE_UTILIZATION_EFFICIENCY", 1.0);  // Less rats per landscape productivity than mice if < 1.0.
+    // Calculated parameters
+    defineConstant("RAT_FORAGING_RADIUS", sqrt(RAT_FORAGING_AREA / PI));
+    defineConstant("RAT_MIGRATION_DISTANCE", 5);  // 5=500 meters. Used as sigma for a normal distribution.
+    // Foraging
+    initializeInteractionType(1, "xy", reciprocal=T, maxDistance=RAT_FORAGING_RADIUS);
+    // Reproduction
+    initializeInteractionType(2, "xy", reciprocal=T, maxDistance=RAT_MIGRATION_DISTANCE, sexSegregation="FM");
+    ////////////////////////////////////////////////////////////
+
+    /////////////////////////// Mice ///////////////////////////
+    defineCfgParam("MOUSE_DISPERSAL_LIKELIHOOD", 0.5);
+    defineCfgParam("MOUSE_FORAGING_AREA", 0.8);
+    defineCfgParam("MOUSE_LITTER_SIZE", 7);
+    defineCfgParam("MOUSE_SURVIVAL_RATE", 0.65);
+    defineCfgParam("MOUSE_MAX_AGE", 18);
+    defineCfgParam("MOUSE_REPRODUCE_CHANCE", c(0.95, 0.95, 0.786, 0.388, 0.160, 0.075, 0.047, 0.104, 0.246, 0.530, 0.814, 0.95));
+    defineCfgParam("MOUSE_ADULT_AGE", 2);
+    defineCfgParam("MOUSE_CITY_ADVANTAGE", 1.5);
+    defineCfgParam("MOUSE_RELATIVE_UTILIZATION_EFFICIENCY", 1.425);  // More mice per landscape productivity than rats if > 1.0.
+    // Calculated parameters
+    defineConstant("MOUSE_FORAGING_RADIUS", sqrt(MOUSE_FORAGING_AREA / PI));
+    defineConstant("MOUSE_MIGRATION_DISTANCE", 2);  // 200 meters
+    // Foraging
+    initializeInteractionType(3, "xy", reciprocal=T, maxDistance=MOUSE_FORAGING_RADIUS);
+    // Reproduction
+    initializeInteractionType(4, "xy", reciprocal=T, maxDistance=MOUSE_MIGRATION_DISTANCE, sexSegregation="FM");
+    ////////////////////////////////////////////////////////////
+
+    ///////////////////////// Mustelids ////////////////////////
+    defineCfgParam("MUST_FORAGING_AREA", 20);
+    defineCfgParam("MUST_LITTER_SIZE", 7);
+    defineCfgParam("MUST_SURVIVAL_RATE", 0.98);
+    defineCfgParam("MUST_MAX_AGE", 30);
+    defineCfgParam("MUST_ADULT_AGE", 6);
+    defineCfgParam("MUST_PREY_VALUE", 0.1);
+    defineConstant("MUST_FORAGING_RADIUS", sqrt(MUST_FORAGING_AREA / PI));
+    defineConstant("MUST_MIGRATION_DISTANCE", 10);  // 1km.
+    defineConstant("MUST_BASELINE_ENVIRONMENT_PREY_VALUE", 1.5);
+    defineConstant("MUST_MOUSE_VALUE_AS_PORTION_OF_RAT_VALUE", 0.75);
+    // Foraging
+    initializeInteractionType(5, "xy", reciprocal=T, maxDistance=MUST_FORAGING_RADIUS);
+    // Reproduction
+    initializeInteractionType(6, "xy", reciprocal=T, maxDistance=MUST_MIGRATION_DISTANCE, sexSegregation="FM");
+    ////////////////////////////////////////////////////////////
+
+    defineCfgParam("SIM_NAME", "DELETE_BIG_RUNTIME_TEST");
+    createDirectory("output/" + SIM_NAME);
+    createDirectory("output/" + SIM_NAME + "/one_drive");
+    createDirectory("output/" + SIM_NAME + "/two_drive");
+    createDirectory("output/" + SIM_NAME + "/rat");
+    createDirectory("output/" + SIM_NAME + "/mouse");
+    createDirectory("output/" + SIM_NAME + "/mustelid");
+
+    mastData = readCSV("mast.csv");
+    defineConstant("TREE_MAST_MULTIPLIER", mastData.getValue("resource_multiplier"));
+
+    initializeInteractionType(7, "xy", reciprocal=T, maxDistance=28.2);  // For gene drive release.
+    i7.setInteractionFunction("l", 1.0);
+}
+
+//// HELPER FUNC FOR CONSTANTS THAT MAY ASLO BE CONFIGURED VIA COMMAND LINE.
+function (void) defineCfgParam(string$ name, lifs value) {
+    if (!exists(name))
+        defineConstant(name, value);
+}
+
+species resource_node initialize() {
+    initializeSpecies(avatar="V", color="cornflowerblue");
+    initializeSLiMOptions(dimensionality="xy");
+}
+
+species rat initialize() {
+    initializeSpecies(avatar="O", color="red");
+    initializeSLiMOptions(dimensionality="xy");
+    initializeSex("A");
+    wt = initializeMutationType("m1", 0.5, "f", 0.0);
+    dr = initializeMutationType("m2", 0.5, "f", 0.0);
+    r1 = initializeMutationType("m3", 0.5, "f", 0.0);
+    r2 = initializeMutationType("m4", 0.5, "f", 0.0);
+    variations = c(wt, dr, r1, r2);
+    // Variations are all part of g1 genome element, which has 1 locus.
+    initializeGenomicElementType("g1", variations, c(1, 1, 1, 1));
+    initializeGenomicElement(g1, 0, 0);
+    // These variations overwrite one another.
+    variations.mutationStackPolicy = "l";
+    variations.mutationStackGroup = 1;
+    // No mutation or recombination in this model.
+    initializeMutationRate(0);
+    initializeRecombinationRate(0);
+}
+
+species mouse initialize() {
+    initializeSpecies(avatar="V", color="grey");
+    initializeSLiMOptions(dimensionality="xy");
+    initializeSex("A");
+}
+
+species mustelid initialize() {
+    initializeSpecies(avatar="V", color="white");
+    initializeSLiMOptions(dimensionality="xy");
+    initializeSex("A");
+}
+
+ticks all 2: first() {
+    // Evaluate the spatial interaction for reproduction.
+    i2.evaluate(p2);
+    i4.evaluate(p3);
+    i6.evaluate(p4);
+}
+
+//// REPRODUCTION RULES.
+species mouse reproduction (NULL, "F") {
+    females = p3.subsetIndividuals(sex="F", minAge=MOUSE_ADULT_AGE);
+    reproduce_chance = MOUSE_REPRODUCE_CHANCE[asInteger(community.tick % 12)];
+    females = females[runif(females.size()) < reproduce_chance];
+    litter_sizes = rpois(females.size(), MOUSE_LITTER_SIZE * MOUSE_SURVIVAL_RATE);
+    non_zero = (litter_sizes != 0);
+    females = females[non_zero];
+    litter_sizes = litter_sizes[non_zero];
+    // Draw mates for the females that remain.
+    mates = i4.drawByStrength(females, 1, p3, returnDict=T);
+    mated_indices = mates.compactIndices(preserveOrder=F);
+    females = females[mated_indices];
+    for (idx in seqAlong(females)) {
+        mother = females[idx];
+        mate = mates.getValue(idx);
+        offspring = p3.addCrossed(mother, mate, count=litter_sizes[idx]);
+        offspring.setSpatialPosition(mother.spatialPosition);
+        offspring.tagF = mother.tagF;
+    }
+    self.active = 0;
+}
+
+//// REPRODUCTION RULES.
+species rat reproduction (NULL, "F") {
+    females = p2.subsetIndividuals(sex="F", minAge=RAT_ADULT_AGE);
+    reproduce_chance = RAT_REPRODUCE_CHANCE[asInteger(community.tick % 12)];
+    females = females[runif(females.size()) < reproduce_chance];
+    litter_sizes = rpois(females.size(), RAT_LITTER_SIZE * RAT_SURVIVAL_RATE);
+    non_zero = (litter_sizes != 0);
+    females = females[non_zero];
+    litter_sizes = litter_sizes[non_zero];
+    // Draw mates for the females that remain.
+    mates = i2.drawByStrength(females, 1, p2, returnDict=T);
+    mated_indices = mates.compactIndices(preserveOrder=F);
+    females = females[mated_indices];
+    for (idx in seqAlong(females)) {
+        mother = females[idx];
+        if (sum(mother.countOfMutationsOfType(m2)) + sum(mother.countOfMutationsOfType(m4)) == 2)
+            next;
+        mate = mates.getValue(idx);
+        offspring = p2.addCrossed(mother, mate, count=litter_sizes[idx]);
+        offspring.setSpatialPosition(mother.spatialPosition);
+        offspring.tagF = mother.tagF;
+    }
+    self.active = 0;
+}
+
+species rat modifyChild() {
+    // Homing drive:
+    parent = c(parent1, parent2);
+    child_chromosome = c(child.haploidGenome1, child.haploidGenome2);
+    // Germline:
+    for (i in c(0, 1)) {
+        // Determine presence of drive in this parent and wt in the chromosome inherited from this parent.
+        //i.e. if at least one of the parents was a drive carrier, but the child didn't inherit the drive (i.e. only inherited WT chromosomes)
+        if (sum(parent[i].haplosomes.countOfMutationsOfType(m2)) & sum(child_chromosome[i].countOfMutationsOfType(m1))) {
+            if (runif(1) < DRIVE_EFFICIENCY)
+                // Homing succeeds:
+                child_chromosome[i].addNewDrawnMutation(m2, 0);
+        }
+    }
+    return T;
+}
+
+//// REPRODUCTION RULES.
+species mustelid reproduction (NULL, "F") {
+    if (community.tick % 12 != 11.0) {
+        self.active = 0;
+        return;
+    }
+    females = p4.subsetIndividuals(sex="F", minAge=MUST_ADULT_AGE);
+    litter_sizes = rpois(females.size(), MUST_LITTER_SIZE * MUST_SURVIVAL_RATE);
+    non_zero = (litter_sizes != 0);
+    females = females[non_zero];
+    litter_sizes = litter_sizes[non_zero];
+    // Draw mates for the females that remain.
+    mates = i6.drawByStrength(females, 1, p4, returnDict=T);
+    mated_indices = mates.compactIndices(preserveOrder=F);
+    females = females[mated_indices];
+    for (idx in seqAlong(females)) {
+        mother = females[idx];
+        mate = mates.getValue(idx);
+        offspring = p4.addCrossed(mother, mate, count=litter_sizes[idx]);
+        offspring.setSpatialPosition(mother.spatialPosition);
+        offspring.tagF = mother.tagF;
+    }
+    self.active = 0;
+}
+
+ticks all 1 early() {
+    catn("STARTING SIMULATION.");
+    mapImage = Image(MODELED_AREA_FOLDER + "map.png");
+    defineGlobal("XMAX", mapImage.width);
+    defineGlobal("YMAX", mapImage.height);
+
+    // Initialize the node population.
+    nodeData = readCSV(MODELED_AREA_FOLDER + "resource.csv");
+    num_nodes = size(nodeData.getValue("X"));
+    resource_node.addSubpop("p1", num_nodes);
+    p1.setSpatialBounds(c(0, 0, XMAX, YMAX));
+    p1.individuals.x = asFloat(nodeData.getValue("X"));
+    p1.individuals.y = asFloat(nodeData.getValue("Y"));
+    for (i in seqAlong(p1.individuals)) {
+        p1.individuals[i].setValue("VAL", c(nodeData.getValue("VAL1")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL2")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL3")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL4")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL5")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL6")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL7")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL8")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL9")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL10")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL11")[i] * SCALE_FACTOR,
+                                            nodeData.getValue("VAL12")[i] * SCALE_FACTOR
+                                            ));
+        p1.individuals[i].tagL0 = nodeData.getValue("CITY")[i];
+        p1.individuals[i].tagL1 = nodeData.getValue("MAST_AREA")[i];
+    }
+    catn("INITIALIZED " + num_nodes + " RESOURCE NODES.");
+
+    // Initialize the rat population.
+    rataData = readCSV(MODELED_AREA_FOLDER + "rat.csv");
+    rat_capacity = size(rataData.getValue("X"));
+    catn("Starting rat population size: " + rat_capacity + ".");
+    rat.addSubpop("p2", rat_capacity);
+    p2.setSpatialBounds(c(0, 0, XMAX, YMAX));
+    p2.individuals.x = asFloat(rataData.getValue("X"));
+    p2.individuals.y = asFloat(rataData.getValue("Y"));
+    for (ind in p2.individuals)
+        ind.age = rbinom(1, RAT_MAX_AGE, 0.05);
+    p2.individuals.color = "red";
+    p2.individuals.haplosomes.addNewDrawnMutation(m1, 0);
+
+    // Initialize the mouse population.
+    mouseData = readCSV(MODELED_AREA_FOLDER + "mouse.csv");
+    mouse_capacity = size(mouseData.getValue("X"));
+    catn("Starting mouse population size: " + mouse_capacity + ".");
+    mouse.addSubpop("p3", mouse_capacity);
+    p3.setSpatialBounds(c(0, 0, XMAX, YMAX));
+    p3.individuals.x = asFloat(mouseData.getValue("X"));
+    p3.individuals.y = asFloat(mouseData.getValue("Y"));
+    for (ind in p3.individuals)
+        ind.age = rbinom(1, MOUSE_MAX_AGE, 0.04);
+    p3.individuals.color = "grey";
+
+    // Initialize the mouse population.
+    mustData = readCSV(MODELED_AREA_FOLDER + MUSTELID_DATA_FILE);
+    must_capacity = size(mustData.getValue("X"));
+    catn("Starting mustelid population size: " + must_capacity + ".");
+    mustelid.addSubpop("p4", must_capacity);
+    p4.setSpatialBounds(c(0, 0, XMAX, YMAX));
+    p4.individuals.x = asFloat(mustData.getValue("X"));
+    p4.individuals.y = asFloat(mustData.getValue("Y"));
+    for (ind in p4.individuals)
+        ind.age = rbinom(1, MUST_MAX_AGE, 0.1);
+    p4.individuals.color = "white";
+
+    p1.defineSpatialMap("map", "xy", mapImage.floatK, valueRange=c(0.0, 1.0), colors=c("#000000", "#FFFFFF"));
+    p2.defineSpatialMap("map2", "xy", mapImage.floatK, valueRange=c(0.0, 1.0), colors=c("#000000", "#FFFFFF"));
+    p3.defineSpatialMap("map3", "xy", mapImage.floatK, valueRange=c(0.0, 1.0), colors=c("#000000", "#FFFFFF"));
+    p4.defineSpatialMap("map4", "xy", mapImage.floatK, valueRange=c(0.0, 1.0), colors=c("#000000", "#FFFFFF"));
+
+    i1.evaluate(c(p2, p1));
+    i3.evaluate(c(p3, p1));
+    i5.evaluate(c(p4, p1));
+    nodes = p1.individuals;
+    p2.individuals.tagF = 0.0;;
+    p3.individuals.tagF = 0.0;;
+    p4.individuals.tagF = 0.0;;
+    mustelid_vectors = i5.nearestNeighbors(nodes, p4.individualCount, p4, returnDict=T);
+    rat_vectors = i1.nearestNeighbors(nodes, p2.individualCount, p2, returnDict=T);
+    mouse_vectors = i3.nearestNeighbors(nodes, p3.individualCount, p3, returnDict=T);
+    for (idx in seqAlong(nodes)) {
+        mustelid_customers = mustelid_vectors.getValue(idx);
+        rat_customers = rat_vectors.getValue(idx);
+        mouse_customers = mouse_vectors.getValue(idx);
+        rat_customers.tagF = rat_customers.tagF + 1;
+        mouse_customers.tagF = mouse_customers.tagF + 1;
+        if (nodes[idx].tagL0 == F)
+            mustelid_customers.tagF = mustelid_customers.tagF + 1;  // Count non-city nodes nearby.
+    }
+    mustelid.killIndividuals(p4.individuals[p4.individuals.tagF==0.0]);
+
+    if (VISUAL_OUTPUT) {
+        // Density maps for visual output.
+        if (size(p2.individuals)) {
+            density = summarizeIndividuals(p2.individuals, c(YMAX, XMAX), p2.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=T);
+            rat_density = p2.defineSpatialMap("rat_density", "xy", density, valueRange=c(0,100), colors=c("#000000", "#FFFFFF"));
+            defineGlobal("RAT_DENSITY", rat_density);
+            density = summarizeIndividuals(p2.individuals, c(YMAX, XMAX), p2.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=T);
+            one_drive_density = p2.defineSpatialMap("one_drive_density", "xy", density, valueRange=c(0,100), colors=c("#000000", "#FFFFFF"));
+            defineGlobal("ONE_DRIVE_DENSITY", one_drive_density);
+            density = summarizeIndividuals(p2.individuals, c(YMAX, XMAX), p2.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=T);
+            two_drive_density = p2.defineSpatialMap("two_drive_density", "xy", density, valueRange=c(0,100), colors=c("#000000", "#FFFFFF"));
+            defineGlobal("TWO_DRIVE_DENSITY", two_drive_density);
+        }
+        if (size(p3.individuals)) {
+            density = summarizeIndividuals(p3.individuals, c(YMAX, XMAX), p3.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=T);
+            mouse_density = p3.defineSpatialMap("mouse_density", "xy", density, valueRange=c(0,100), colors=c("#000000", "#FFFFFF"));
+            defineGlobal("MOUSE_DENSITY", mouse_density);
+        }
+        if (size(p4.individuals)) {
+            density = summarizeIndividuals(p4.individuals, c(YMAX, XMAX), p4.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=T);
+            mustelid_density = p4.defineSpatialMap("mustelid_density", "xy", density, valueRange=c(0,100), colors=c("#000000",  "#FFFFFF"));
+            defineGlobal("MUSTELID_DENSITY", mustelid_density);
+        }
+    }
+    catn("DONE INITIALIZING POPULATION.");
+}
+
+ticks all 46 late() {
+    if (!DRIVE_RELEASE_CSV)
+        return;
+    // Adding gene drive carriers to the population.
+    driveData = readCSV(MODELED_AREA_FOLDER + DRIVE_RELEASE_CSV);
+    site_x = asFloat(driveData.getValue("X"));
+    site_y = asFloat(driveData.getValue("Y"));
+    site_count = driveData.getValue("count");
+    i7.evaluate(p2);
+    targets = c();
+    for (idx in seqAlong(site_count)) {
+        nearby = i7.nearestNeighborsOfPoint(c(site_x[idx], site_y[idx]), p2, 4 * site_count[idx]);
+        if (size(nearby) < site_count[idx])
+            targets = c(targets, nearby);
+        else
+            targets = c(targets, sample(nearby, site_count[idx]));
+    }
+    count = size(targets);
+    catn("Adding: " + count + " gene drive carriers.");
+    targets.color = "green";
+    targets.haploidGenome1.addNewDrawnMutation(m2, 0);
+}
+
+//// FITNESS & FORAGING
+ticks all 2: early() {
+    // TAG GUIDE:
+    // For nodes:
+    //          getValue("VAL")[season] contains resource value.
+    //          tagL0=T is city; F is not.
+
+    // For rats and mice:
+    //          tagF counts all nodes in range last step.
+    //          tag counts all nodes in range now.
+    //          z = number of city nodes nearby (for dispersal) at X10000
+    //          z = after dividing by 10000 predation exposure
+
+    // For mustelids:
+    //          tagF = number of non-city nodes in range last time step.
+    //          tag = number of non-city nodes in range now.
+    //          z = number of rats+mice nearby.
+
+    tree_mast_resource_multiplier = TREE_MAST_MULTIPLIER[community.tick];
+    season = asInteger(community.tick % 12);
+
+    /////////////////////////////////////////////////////////
+    /////////////// Mortality. //////////////////////////////
+    /////////////////////////////////////////////////////////
+
+    // Age mortaility
+    rat.killIndividuals(p2.subsetIndividuals(minAge=RAT_MAX_AGE));
+    mouse.killIndividuals(p3.subsetIndividuals(minAge=MOUSE_MAX_AGE));
+    mustelid.killIndividuals(p4.subsetIndividuals(minAge=MUST_MAX_AGE));
+
+    // Random mortality
+    non_newborn = p2.subsetIndividuals(minAge=1);
+    rat.killIndividuals(sample(non_newborn, asInteger(size(non_newborn) * (1 - RAT_SURVIVAL_RATE))));
+    non_newborn = p3.subsetIndividuals(minAge=1);
+    mouse.killIndividuals(sample(non_newborn, asInteger(size(non_newborn) * (1 - MOUSE_SURVIVAL_RATE))));
+    non_newborn = p4.subsetIndividuals(minAge=1);
+    mustelid.killIndividuals(sample(non_newborn, asInteger(size(non_newborn) * (1 - MUST_SURVIVAL_RATE))));
+
+    /////////////////////////////////////////////////////////
+    /////////////// Foraging. ///////////////////////////////
+    /////////////////////////////////////////////////////////
+
+    i1.evaluate(c(p2, p1));
+    i3.evaluate(c(p3, p1));
+    i5.evaluate(c(p4, p1));
+
+    nodes = p1.individuals;
+    rats = p2.individuals;
+    mice = p3.individuals;
+    mustelids = p4.individuals;
+
+    rats.fitnessScaling = 0.0;
+    mice.fitnessScaling = 0.0;
+    mustelids.fitnessScaling = 0.0;
+    mustelids.tag = 0;
+    rats.tag = 0;
+    mice.tag = 0;
+    rats.z = 0.0;
+    mice.z = 0.0;
+
+    ratx = rats.x;
+    mousex = mice.x;
+    mustx = mustelids.x;
+    rats.x = 0.0;
+    mice.x = 0.0;
+    mustelids.x = 0.0;
+
+    rat_vectors = i1.nearestNeighbors(nodes, p2.individualCount, p2, returnDict=T);
+    mouse_vectors = i3.nearestNeighbors(nodes, p3.individualCount, p3, returnDict=T);
+    mustelid_vectors = i5.nearestNeighbors(nodes, p4.individualCount, p4, returnDict=T);
+
+    for (idx in seqAlong(nodes)) {
+        // Vectors for each species (and newborn mice).
+        mustelid_customers = mustelid_vectors.getValue(idx);
+        rat_customers = rat_vectors.getValue(idx);
+        mouse_customers = mouse_vectors.getValue(idx);
+        newborn_mice = mouse_customers[mouse_customers.age==0];
+
+        num_rat = size(rat_customers);
+        num_mouse = size(mouse_customers);
+        num_must = size(mustelid_customers);
+
+        rat_nodes_visited = rat_customers.tagF;
+        mouse_nodes_visited = mouse_customers.tagF;
+
+        if (nodes[idx].tagL1 == T) // Node is in a masting area.
+            node_resource_val = nodes[idx].getValue("VAL")[season] * tree_mast_resource_multiplier;
+        else
+            node_resource_val = nodes[idx].getValue("VAL")[season];
+        node_mustelid_resource_val = node_resource_val * MUSTELID_RELATIVE_CAPACITY;
+
+        mustelid_force_here = 0;   // Proportion of time spent by individuals at this node.
+        if (num_must) {
+            mustelid_force_here = num_must / mean(mustelid_customers.tagF);
+            // tagF stores the number of nodes an individual was next to during the last time step.
+            // Mustelids are also limited by other factors such as nesting sites and competition.
+            mustelid_customers.fitnessScaling = mustelid_customers.fitnessScaling + node_mustelid_resource_val / num_must;
+        }
+
+        rat_force_here = 0;
+        if (num_rat) {
+            rat_force_here = num_rat / mean(rat_nodes_visited);
+            // Store exposure to potential predation in z.
+            rat_customers.x = rat_customers.x + mustelid_force_here / rat_nodes_visited;
+            // Count number of nodes near each individuals for plugging into their tagF for the next time step.
+            rat_customers.tag = rat_customers.tag + 1;
+        }
+
+        mouse_force_here = 0;
+        if (num_mouse) {
+            mouse_force_here = num_mouse / mean(mouse_nodes_visited);
+            mouse_customers.x = mouse_customers.x + mustelid_force_here / mouse_nodes_visited;
+            // Count number of nodes near each individuals for plugging into their tagF for the next time step.
+            mouse_customers.tag = mouse_customers.tag + 1;
+        }
+
+        newborn_mouse_resource_value = 0;
+        if (size(newborn_mice)) {
+            newborn_mouse_force_here = size(newborn_mice) / mean(newborn_mice.tagF);
+            newborn_mouse_resource_value = RAT_NEWBORN_MOUSE_RESOURCE_VALUE * newborn_mouse_force_here;
+            newborn_mice.x = newborn_mice.x + rat_force_here * RAT_PREDATE_ON_NEWBORN_MOUSE_RATE / (newborn_mice.tagF * size(newborn_mice));
+        }
+
+        if (nodes[idx].tagL0 == F) {
+            if (num_must) {
+                mustelid_customers.tag = mustelid_customers.tag + 1;  // Count ONLY non-city nodes nearby.
+                // Set z to determine if this mustelid can eat enough.
+                mustelid_customers.x = mustelid_customers.x + rat_force_here + mouse_force_here * MUST_MOUSE_VALUE_AS_PORTION_OF_RAT_VALUE;
+            }
+            // Rat and mouse foraging:
+            total_competition = num_rat + num_mouse;
+            if (total_competition == 0)
+                next;
+            rat_share = newborn_mouse_resource_value + node_resource_val * num_rat / total_competition;
+            mouse_share = node_resource_val * num_mouse / total_competition;
+        }
+        else {  // This is a city node.
+            // Count city nodes in z:
+            rat_customers.z = rat_customers.z + 1;
+            mouse_customers.z = mouse_customers.z + 1;
+
+            // Rat and mouse foraging:
+            total_competition = num_rat + num_mouse * MOUSE_CITY_ADVANTAGE;
+            if (total_competition == 0)
+                next;
+            mouse_share = node_resource_val * MOUSE_CITY_ADVANTAGE * num_mouse / total_competition;
+            rat_share = node_resource_val - mouse_share + newborn_mouse_resource_value;
+        }
+
+        // Amount foraged from this node by mice and rats
+        rat_customers.fitnessScaling = rat_customers.fitnessScaling + rat_share * RAT_RELATIVE_UTILIZATION_EFFICIENCY / num_rat;
+        mouse_customers.fitnessScaling = mouse_customers.fitnessScaling + mouse_share * MOUSE_RELATIVE_UTILIZATION_EFFICIENCY / num_mouse;
+    }
+
+    rats.fitnessScaling = pmin(rats.fitnessScaling, 1.0);
+    mice.fitnessScaling = pmin(mice.fitnessScaling, 1.0);
+    mustelids.fitnessScaling = pmin(mustelids.fitnessScaling, 1.0);
+
+    // Number of nearby nodes has now been stored in tag. Move to tagF for the next time step.
+    mustelids.tagF = asFloat(mustelids.tag);
+    rats.tagF = asFloat(rats.tag);
+    mice.tagF = asFloat(mice.tag);
+
+    /////////////////////////////////////////////////////////
+    /////////////// Predation. //////////////////////////////
+    /////////////////////////////////////////////////////////
+
+    kill_indices = runif(size(rats)) < rats.x;
+    rat.killIndividuals(rats[kill_indices]);
+    kill_indices = runif(size(mice)) < mice.x;
+    mouse.killIndividuals(mice[kill_indices]);
+    kill_indices = runif(size(mustelids)) > mustelids.x * MUST_PREY_VALUE + mustelids.fitnessScaling * MUST_BASELINE_ENVIRONMENT_PREY_VALUE;
+    mustelid.killIndividuals(p4.individuals[kill_indices]);
+
+    // If a mustelid has no nearby non-city nodes, it can't survive.
+    mustelid.killIndividuals(p4.individuals[p4.individuals.tagF==0.0]);
+
+    rats.x = ratx;
+    mice.x = mousex;
+    mustelids.x = mustx;
+
+    /////////////////////////////////////////////////////////
+    /////////////// Dispersal. //////////////////////////////
+    /////////////////////////////////////////////////////////
+
+    // Mouse dispersal.
+    unmoved = p3.individuals[runif(p3.individualCount) < MOUSE_DISPERSAL_LIKELIHOOD];
+    start_pos = unmoved.spatialPosition;
+    attempts = 0;
+    while (size(unmoved)) {
+        // Move fetch start pos to here.
+        deviated_positions = start_pos + rnorm(size(unmoved) * 2, 0, MOUSE_MIGRATION_DISTANCE) * rep((1 + unmoved.tagF - unmoved.z) / (1 + unmoved.tagF), 2);
+        unmoved.setSpatialPosition(deviated_positions);  // Change to not call setSpatialPosition until they've found a legal spot.
+        out_of_bounds = p3.spatialMapValue("map3", deviated_positions) == 0.0;
+        unmoved = unmoved[out_of_bounds];
+        start_pos = start_pos[repEach(out_of_bounds, 2)];
+        attempts = attempts + 1;
+        if (attempts == 10)
+            mouse.killIndividuals(unmoved);
+            break;
+    }
+
+    // Rat dispersal.
+    unmoved = p2.individuals[runif(p2.individualCount) < RAT_DISPERSAL_LIKELIHOOD];
+    start_pos = unmoved.spatialPosition;
+    attempts = 0;
+    while (size(unmoved)) {
+        deviated_positions = start_pos + rnorm(size(unmoved) * 2, 0, RAT_MIGRATION_DISTANCE) * rep((1 + unmoved.tagF - unmoved.z) / (1 + unmoved.tagF), 2);
+        unmoved.setSpatialPosition(deviated_positions);
+        out_of_bounds = p2.spatialMapValue("map2", deviated_positions) == 0.0;
+        unmoved = unmoved[out_of_bounds];
+        start_pos = start_pos[repEach(out_of_bounds, 2)];
+        attempts = attempts + 1;
+        if (attempts == 10)
+            rat.killIndividuals(unmoved);
+            break;
+    }
+
+    // Mustelid dispersal.
+    unmoved = p4.individuals;
+    start_pos = unmoved.spatialPosition;
+    attempts = 0;
+    while (size(unmoved)) {
+        deviated_positions = start_pos + rnorm(size(unmoved) * 2, 0, MUST_MIGRATION_DISTANCE);
+        unmoved.setSpatialPosition(deviated_positions);
+        out_of_bounds = p4.spatialMapValue("map4", deviated_positions) == 0.0;
+        unmoved = unmoved[out_of_bounds];
+        start_pos = start_pos[repEach(out_of_bounds, 2)];
+        attempts = attempts + 1;
+        if (attempts == 10)
+            mustelid.killIndividuals(unmoved);
+            break;
+    }
+}
+
+ticks all 1 late() {
+    defineGlobal("TIMER_START", clock(type="mono"));
+}
+
+//// OUTPUT
+ticks all 1:647 late () {
+    rats = p2.individuals;
+    num_rats = p2.individualCount;
+    num_wt = sum(rats.haplosomes.countOfMutationsOfType(m1));
+    num_dr = sum(rats.haplosomes.countOfMutationsOfType(m2));
+    num_r1 = sum(rats.haplosomes.countOfMutationsOfType(m3));
+    num_r2 = sum(rats.haplosomes.countOfMutationsOfType(m4));
+    num_has_drive = sum(rats.haploidGenome1.countOfMutationsOfType(m2) > 0 | rats.haploidGenome2.countOfMutationsOfType(m2) > 0);
+    has_drive = rats[rats.haploidGenome1.countOfMutationsOfType(m2) > 0 | rats.haploidGenome2.countOfMutationsOfType(m2) > 0];
+    one_drive = rats[rats.haploidGenome1.countOfMutationsOfType(m2) + rats.haploidGenome2.countOfMutationsOfType(m2) == 1];;
+    two_drive = rats[rats.haploidGenome1.countOfMutationsOfType(m2) + rats.haploidGenome2.countOfMutationsOfType(m2) == 2];;
+
+    num_sites = 2 * num_rats;
+    rate_wt = num_wt / num_sites;
+    rate_dr = num_dr / num_sites;
+    rate_r1 = num_r1 / num_sites;
+    rate_r2 = num_r2 / num_sites;
+    rate_has_drive = num_has_drive / num_rats;
+
+    if (VISUAL_OUTPUT) {
+        // Density maps for visual output.
+        if (size(p2.individuals)) {
+            density = summarizeIndividuals(p2.individuals, c(YMAX, XMAX), p2.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=F);
+            RAT_DENSITY.changeValues(density);
+            ratmap = RAT_DENSITY.mapImage();
+            ratstr = "/mnt/c/Projects/Big NZ/model/output/" + SIM_NAME + "/rat/" + asInteger(community.tick) + ".png";
+            ratmap.write(ratstr);
+        }
+        if (size(p3.individuals)) {
+            density = summarizeIndividuals(p3.individuals, c(YMAX, XMAX), p3.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=F);
+            MOUSE_DENSITY.changeValues(density);
+            mousemap = MOUSE_DENSITY.mapImage();
+            mousestr = "/mnt/c/Projects/Big NZ/model/output/" + SIM_NAME + "/mouse/" + asInteger(community.tick) + ".png";
+            mousemap.write(mousestr);
+        }
+        if (size(p4.individuals)) {
+            density = summarizeIndividuals(p4.individuals, c(YMAX, XMAX), p4.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=F);
+            MUSTELID_DENSITY.changeValues(density);
+            mustmap = MUSTELID_DENSITY.mapImage();
+            muststr = "/mnt/c/Projects/Big NZ/model/output/" + SIM_NAME + "/mustelid/" + asInteger(community.tick) + ".png";
+            mustmap.write(muststr);
+        }
+        if (size(one_drive)) {
+            density = summarizeIndividuals(one_drive, c(YMAX, XMAX), p2.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=F);
+            ONE_DRIVE_DENSITY.changeValues(density);
+            onedrivemap = ONE_DRIVE_DENSITY.mapImage();
+            onedrivestr = "/mnt/c/Projects/Big NZ/model/output/" + SIM_NAME + "/one_drive/" + asInteger(community.tick) + ".png";
+            onedrivemap.write(onedrivestr);
+        }
+        if (size(two_drive)) {
+            density = summarizeIndividuals(two_drive, c(YMAX, XMAX), p2.spatialBounds, operation="individuals.size();", empty=0.0, perUnitArea=F);
+            TWO_DRIVE_DENSITY.changeValues(density);
+            twodrivemap = TWO_DRIVE_DENSITY.mapImage();
+            twodrivestr = "/mnt/c/Projects/Big NZ/model/output/" + SIM_NAME + "/two_drive/" + asInteger(community.tick) + ".png";
+            twodrivemap.write(twodrivestr);
+        }
+    }
+
+    months = c('December', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November');
+    catn("Time: " + community.tick + " (" + months[asInteger(community.tick % 12)] + ")\n");
+    catn("\tTick runtime: " + (clock(type="mono") - TIMER_START) + "\n");
+    catn("\tRat popsize: " + (p2.individualCount));
+    catn("\tRat males: " + size(p2.subsetIndividuals(sex="M")) +
+        "  Rat females: " +  size(p2.subsetIndividuals(sex="F")));
+    catn("\tNewborns: " + (size(p2.subsetIndividuals(minAge=0, maxAge=0))) +
+        " ; 1: " + (size(p2.subsetIndividuals(minAge=1, maxAge=1))) +
+        " ; 2: " + (size(p2.subsetIndividuals(minAge=2, maxAge=2))) +
+        " ; 3: " + (size(p2.subsetIndividuals(minAge=3, maxAge=3))) +
+        " ; Avg age: " + (sum(p2.individuals.age) / p2.individualCount) + "\n");
+
+    if (num_dr)
+        catn("\t\twt: " + rate_wt + "\tdr: " + rate_dr + "\tr1: " + rate_r1 + "\tr2: " + rate_r2 +
+            "\t%inds with dr: " + rate_has_drive + "\tNumber of drive alleles present: " + num_dr + "\n");
+
+    catn("\tMouse popsize: " + (p3.individualCount));
+    catn("\tMouse males: " + size(p3.subsetIndividuals(sex="M")) +
+        "  Mouse females: " +  size(p3.subsetIndividuals(sex="F")));
+    catn("\tNewborns: " + (size(p3.subsetIndividuals(minAge=0, maxAge=0))) +
+        " ; 1: " + (size(p3.subsetIndividuals(minAge=1, maxAge=1))) +
+        " ; 2: " + (size(p3.subsetIndividuals(minAge=2, maxAge=2))) +
+        " ; 3: " + (size(p3.subsetIndividuals(minAge=3, maxAge=3))) +
+        " ; Avg age: " + (sum(p3.individuals.age) / p3.individualCount) + "\n");
+
+    catn("\tMustelid popsize: " + (p4.individualCount));
+    catn("\tMustelid males: " + size(p4.subsetIndividuals(sex="M")) +
+        "  Mustelid females: " +  size(p4.subsetIndividuals(sex="F")));
+    catn("\tNewborns: " + (size(p4.subsetIndividuals(minAge=0, maxAge=0))) +
+        " ; 1: " + (size(p4.subsetIndividuals(minAge=1, maxAge=1))) +
+        " ; 2: " + (size(p4.subsetIndividuals(minAge=2, maxAge=2))) +
+        " ; 3: " + (size(p4.subsetIndividuals(minAge=3, maxAge=3))) +
+        " ; Avg age: " + (sum(p4.individuals.age) / p4.individualCount) + "\n");
+
+    defineGlobal("TIMER_START", clock(type="mono"));
+
+    fname  = "output/" + SIM_NAME + "/" + asInteger(community.tick) + ".txt";
+    output = num_rats + "," + p3.individualCount + "," + p4.individualCount + "," + rate_dr + "," + rate_has_drive + ",\n";
+    writeFile(fname, output);
+}
