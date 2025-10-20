@@ -5,17 +5,15 @@ species all initialize() {
 
     // General params.
     defineCfgParam("SCALE_FACTOR", 1.0);
-    defineCfgParam("MUSTELID_RELATIVE_CAPACITY", 0.02);
-    // Area options: "lake/", "homlake/", "city/", "homcity/", "big/"
-    defineCfgParam("MODELED_AREA_FOLDER", "city/");
-    defineCfgParam("DRIVE_RELEASE_CSV", "drive2.csv");  // "drive.csv"
-    defineCfgParam("MUSTELID_DATA_FILE", "mustelid.csv");
+    defineCfgParam("MODELED_AREA_FOLDER", "farmland/");  // Area options: "farmland/", "lake/"
+    defineCfgParam("DRIVE_RELEASE_CSV", "drive.csv");
+    defineCfgParam("MUSTELID_DATA_FILE", "mustelid.csv");  // no_mustelid.csv or mustelid.csv
     defineCfgParam("MOUSE_DATA_FILE", "mouse.csv");  // no_mouse.csv or mouse.csv
-
+    
     // Drive Parameters:
-    defineCfgParam("DRIVE_EFFICIENCY", 0.2);
+    defineCfgParam("DRIVE_EFFICIENCY", 0.8);
     defineCfgParam("DRIVE_FITNESS", 1.0);
-
+    
     /////////////////////////// Rats ///////////////////////////
     defineCfgParam("RAT_DISPERSAL_LIKELIHOOD", 0.5);
     defineCfgParam("RAT_FORAGING_AREA", 1);  // Areas in this model are 1 = 1 hectare.
@@ -35,7 +33,7 @@ species all initialize() {
     // Reproduction
     initializeInteractionType(2, "xy", reciprocal=T, maxDistance=RAT_MIGRATION_DISTANCE, sexSegregation="FM");
     ////////////////////////////////////////////////////////////
-
+    
     /////////////////////////// Mice ///////////////////////////
     defineCfgParam("MOUSE_DISPERSAL_LIKELIHOOD", 0.5);
     defineCfgParam("MOUSE_FORAGING_AREA", 0.8);
@@ -55,8 +53,9 @@ species all initialize() {
     // Reproduction
     initializeInteractionType(4, "xy", reciprocal=T, maxDistance=MOUSE_MIGRATION_DISTANCE, sexSegregation="FM");
     ////////////////////////////////////////////////////////////
-
+    
     ///////////////////////// Mustelids ////////////////////////
+    defineCfgParam("MUSTELID_RELATIVE_CAPACITY", 0.02);
     defineCfgParam("MUST_FORAGING_AREA", 30);
     defineCfgParam("MUST_LITTER_SIZE", 9.5);
     defineCfgParam("MUST_SURVIVAL_RATE", 0.99);
@@ -75,7 +74,8 @@ species all initialize() {
     initializeInteractionType(6, "xy", reciprocal=T, maxDistance=MUST_MATE_DISTANCE, sexSegregation="FM");
     ////////////////////////////////////////////////////////////
 
-    defineCfgParam("SIM_NAME", "CITY_02");
+    defineCfgParam("SIM_NAME", date());
+    createDirectory("output/");
     createDirectory("output/" + SIM_NAME);
 
     defineCfgParam("ONE_FOLDER", "output/" + SIM_NAME + "/one_drive");
@@ -89,7 +89,7 @@ species all initialize() {
     defineCfgParam("MUST_FOLDER", "output/" + SIM_NAME + "/mustelid");
     createDirectory(MUST_FOLDER);
 
-    mastData = readCSV("mast.csv");
+    mastData = readCSV(MODELED_AREA_FOLDER + "mast.csv");
     defineConstant("TREE_MAST_MULTIPLIER", mastData.getValue("resource_multiplier"));
 
     initializeInteractionType(7, "xy", reciprocal=T, maxDistance=28.2);  // For gene drive release.
