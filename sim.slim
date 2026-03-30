@@ -5,15 +5,17 @@ species all initialize() {
 
     // General params.
     defineCfgParam("SCALE_FACTOR", 1.0);
-    defineCfgParam("MODELED_AREA_FOLDER", "farmland/");  // Area options: "farmland/", "lake/"
-    defineCfgParam("DRIVE_RELEASE_CSV", "drive.csv");
-    defineCfgParam("MUSTELID_DATA_FILE", "mustelid.csv");  // no_mustelid.csv or mustelid.csv
+    defineCfgParam("MUSTELID_RELATIVE_CAPACITY", 0.02);
+    // Area options: "lake/" or "farmland/"
+    defineCfgParam("MODELED_AREA_FOLDER", "lake/");
+    defineCfgParam("DRIVE_RELEASE_CSV", "drive.csv");  // "drive.csv"
+    defineCfgParam("MUSTELID_DATA_FILE", "mustelid.csv");
     defineCfgParam("MOUSE_DATA_FILE", "mouse.csv");  // no_mouse.csv or mouse.csv
-    
+
     // Drive Parameters:
     defineCfgParam("DRIVE_EFFICIENCY", 0.8);
     defineCfgParam("DRIVE_FITNESS", 1.0);
-    
+
     /////////////////////////// Rats ///////////////////////////
     defineCfgParam("RAT_DISPERSAL_LIKELIHOOD", 0.5);
     defineCfgParam("RAT_FORAGING_AREA", 1);  // Areas in this model are 1 = 1 hectare.
@@ -33,7 +35,7 @@ species all initialize() {
     // Reproduction
     initializeInteractionType(2, "xy", reciprocal=T, maxDistance=RAT_MIGRATION_DISTANCE, sexSegregation="FM");
     ////////////////////////////////////////////////////////////
-    
+
     /////////////////////////// Mice ///////////////////////////
     defineCfgParam("MOUSE_DISPERSAL_LIKELIHOOD", 0.5);
     defineCfgParam("MOUSE_FORAGING_AREA", 0.8);
@@ -53,9 +55,8 @@ species all initialize() {
     // Reproduction
     initializeInteractionType(4, "xy", reciprocal=T, maxDistance=MOUSE_MIGRATION_DISTANCE, sexSegregation="FM");
     ////////////////////////////////////////////////////////////
-    
+
     ///////////////////////// Mustelids ////////////////////////
-    defineCfgParam("MUSTELID_RELATIVE_CAPACITY", 0.02);
     defineCfgParam("MUST_FORAGING_AREA", 30);
     defineCfgParam("MUST_LITTER_SIZE", 9.5);
     defineCfgParam("MUST_SURVIVAL_RATE", 0.99);
@@ -74,8 +75,7 @@ species all initialize() {
     initializeInteractionType(6, "xy", reciprocal=T, maxDistance=MUST_MATE_DISTANCE, sexSegregation="FM");
     ////////////////////////////////////////////////////////////
 
-    defineCfgParam("SIM_NAME", date());
-    createDirectory("output/");
+    defineCfgParam("SIM_NAME", "CITY_02");
     createDirectory("output/" + SIM_NAME);
 
     defineCfgParam("ONE_FOLDER", "output/" + SIM_NAME + "/one_drive");
@@ -89,7 +89,7 @@ species all initialize() {
     defineCfgParam("MUST_FOLDER", "output/" + SIM_NAME + "/mustelid");
     createDirectory(MUST_FOLDER);
 
-    mastData = readCSV(MODELED_AREA_FOLDER + "mast.csv");
+    mastData = readCSV("mast.csv");
     defineConstant("TREE_MAST_MULTIPLIER", mastData.getValue("resource_multiplier"));
 
     initializeInteractionType(7, "xy", reciprocal=T, maxDistance=28.2);  // For gene drive release.
@@ -539,10 +539,7 @@ ticks all 2: early() {
                 next;
             mouse_share = node_resource_val * MOUSE_CITY_ADVANTAGE * num_mouse * MOUSE_COMPETITION_EFFICIENCY / total_competition;
             rat_share = node_resource_val - mouse_share + newborn_mouse_resource_value;
-            // print("CITY");
         }
-        // print(rat_share);
-        
 
         // Amount foraged from this node by mice and rats
         rat_customers.fitnessScaling = rat_customers.fitnessScaling + rat_share * RAT_RELATIVE_UTILIZATION_EFFICIENCY / num_rat;
@@ -592,9 +589,10 @@ ticks all 2: early() {
         unmoved = unmoved[out_of_bounds];
         start_pos = start_pos[repEach(out_of_bounds, 2)];
         attempts = attempts + 1;
-        if (attempts == 10)
+        if (attempts == 10) {
             mouse.killIndividuals(unmoved);
             break;
+        }
     }
 
     // Rat dispersal.
@@ -608,9 +606,10 @@ ticks all 2: early() {
         unmoved = unmoved[out_of_bounds];
         start_pos = start_pos[repEach(out_of_bounds, 2)];
         attempts = attempts + 1;
-        if (attempts == 10)
+        if (attempts == 10) {
             rat.killIndividuals(unmoved);
             break;
+        }
     }
 
     // Mustelid dispersal.
@@ -624,9 +623,10 @@ ticks all 2: early() {
         unmoved = unmoved[out_of_bounds];
         start_pos = start_pos[repEach(out_of_bounds, 2)];
         attempts = attempts + 1;
-        if (attempts == 10)
+        if (attempts == 10) {
             mustelid.killIndividuals(unmoved);
             break;
+        }
     }
 }
 
